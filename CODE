@@ -1,48 +1,73 @@
-#Master Sketch (used in tests)
-
 #include <SoftwareSerial.h>
- const uint8_t RX_PIN = D6;
- const uint8_t TX_PIN = D5;
- const long
- // Master RX (from Slave TX)
- // Master TX (to Slave RX)
- UART_BAUD = 38400; // change per test
- const uint16_t MSG_SIZE = 50;
- // change per test
- const uint32_t INTERVAL_MS = 10; // change per test
- const uint32_t TEST_MS = 30000;
- // e.g., 30 s
- SoftwareSerial swSer(RX_PIN, TX_PIN); // RX, TX
- uint32_t sent=0, ok=0, failed=0, seq=0;
- void setup(){
- Serial.begin(115200);
- swSer.begin(UART_BAUD);
- delay(200);
- uint32_t start = millis();
- static uint8_t txbuf[MSG_SIZE];
- static uint8_t rxbuf[MSG_SIZE];
- while (millis()- start < TEST_MS) {
- int n = snprintf((char*)txbuf, MSG_SIZE, "#%lu|SZ=%u|", (unsigned long)seq,
- MSG_SIZE);
- if (n < 0) n = 0; for (int i=n;i<MSG_SIZE;++i) txbuf[i] = 'A' + (seq+i)%26;
- while (swSer.available()>0) swSer.read();
- swSer.write(txbuf, MSG_SIZE); sent++; seq++;
- uint32_t t0 = millis(); int got=0; const uint32_t TIMEOUT_MS=200;
- 5
-while (got<MSG_SIZE && millis()-t0<TIMEOUT_MS) {
- while (swSer.available()>0 && got<MSG_SIZE) rxbuf[got++] = swSer.read();
- }
- if (got==MSG_SIZE && memcmp(txbuf, rxbuf, MSG_SIZE)==0) ok++; else failed++;
- uint32_t nextTick = t0 + INTERVAL_MS; while ((int32_t)(millis()-nextTick) <
- 0) {}
- }
- uint32_t actual = millis()- start;
- Serial.println("=== Test Summary ===");
- Serial.print("Duration_ms: "); Serial.println(actual);
- Serial.print("Sent: ");
- Serial.println(sent);
- Serial.print("OK: ");
- Serial.print("Failed: ");
- }
- void loop(){}
+#include <string.h>
+
+const uint8_t RX_PIN = D6;         // Master RX (from Slave TX)
+const uint8_t TX_PIN = D5;         // Master TX (to Slave RX)
+constexpr long     UART_BAUD   = 38400;   // change per test
+constexpr uint16_t MSG_SIZE    = 50;      // change per test
+constexpr uint32_t INTERVAL_MS = 10;      // change per test
+constexpr uint32_t TEST_MS     = 30000;   // e.g., 30 s
+constexpr uint32_t TIMEOUT_MS  = 200;
+
+SoftwareSerial swSer(RX_PIN, TX_PIN); // RX, TX
+
+uint32_t sent=0, ok=0, failed=0, seq=0;
+
+void setup() {
+  Serial.begin(115200);
+  swSer.begin(UART_BAUD);
+  delay(200);
+
+  uint32_t start = millis();
+  static uint8_t txbuf[MSG_SIZE];
+  static uint8_t rxbuf[MSG_SIZE];
+
+  while (millis() - start < TEST_MS) {
+    int n = snprintf((char*)txbuf, MSG_SIZE, "#%lu|SZ=%u|",
+                     (unsigned long)seq, MSG_SIZE);
+    if (n < 0) n = 0;
+    for (int i = n; i < MSG_SIZE; ++i) txbuf[i] = 'A' + (seq + i) % 26;
+
+    while (swSer.available() > 0) swSer.read();  // flush RX
+
+    uint32_t t0 = millis();
+    swSer.write(txbuf, MSG_SIZE);  // send
+    sent++; seq++;
+
+    // read echo
+    int got = 0;
+    while (got < MSG_SIZE && millis() - t0 < TIMEOUT_MS) {
+      while (swSer.available() > 0 && got < MSG_SIZE) {
+        rxbuf[got++] = swSer.read();
+      }
+      // yield(); // uncomment on ESP8266/ESP32
+    }
+
+    if (got == MSG_SIZE && memcmp(txbuf, rxbuf, MSG_SIZE) == 0) ok++;
+    else failed++;
+
+    // pacing (from send start)
+    uint32_t nextTick = t0 + INTERVAL_MS;
+    while ((int32_t)(millis() - nextTick) < 0) {
+      // yield(); // uncomment on ESP8266/ESP32
+    }
+  }
+
+  uint32_t actual = millis() - start;
+  float secs = actual / 1000.0f;
+  float msg_rate = sent / secs;
+  float throughput = (ok * MSG_SIZE) / secs;
+
+  Serial.println("=== Test Summary ===");
+  Serial.print("Duration_ms: "); Serial.println(actual);
+  Serial.print("Sent: ");        Serial.println(sent);
+  Serial.print("OK: ");          Serial.println(ok);
+  Serial.print("Failed: ");      Serial.println(failed);
+  Serial.print("Msg/s: ");       Serial.println(msg_rate);
+  Serial.print("Throughput_Bps: "); Serial.println(throughput);
+}
+
+void loop() {}
+
+
 
